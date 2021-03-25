@@ -28,6 +28,9 @@ teamlogin = {'Lúcia Moita': 'c85809e301b6d32847d6ea4a345d225a5b343673',
 
 # Validation dates
 def validation_data(itemdata, itemname, closedate, warning):
+    res = datetime.datetime.now()
+    res = res.strftime('%Y')
+
     #se a data tiver tamanho 8 e o ano corresponder ao ano presente na data de fecho da tarefa
     if len(itemdata) == 8 and itemdata[:4] == closedate[:4]:
         res = itemdata[:4]
@@ -44,12 +47,21 @@ def validation_data(itemdata, itemname, closedate, warning):
                 warning.append(itemname + ' - ' + 'Error in day')
 
         else:
-            itemdata = itemdata
-            warning.append(itemname + ' - ' + 'Error in month')
+            itemdata = res + '-' + closedate[5:7] + '-' + itemdata[-2:]
+            warning.append(itemname + ' - ' + 'Error in month but ajusted with completed date task')
+
+    # Validação de mudança de ano
+    elif len(itemdata) == 8 and itemdata[:4] != closedate[:4]:
+        if itemdata[4:6] == '01' and int(itemdata[-2:]) <= 31:
+            itemdata = res + '01' + str(itemdata[-2:])
+
+        elif itemdata[4:6] == '12' and int(itemdata[-2:]) in range(26,31):
+            res = int(res) - 1
+            itemdata = str(res) + '12' + str(itemdata[-2:])
 
     else:  #continuar mais tarde validações mais complexas
         itemdata = itemdata
-        warning.append(itemname + ' - ' + 'Error in len data or year')
+        warning.append(itemname + ' - ' + 'Error in len data')
 
     return itemdata
 
@@ -89,18 +101,15 @@ def process_content(username, data, tasks_name, project, warnings):
             if len(tasktimedata) == 2:
                 taskdate = tasktimedata[0]
                 tasktime = tasktimedata[1]
-
                 taskdate = validation_data(taskdate, taskdescription, data, debuglog)
 
             elif len(tasktimedata[0]) > 8:
                 taskdate = tasktimedata[0][:8]
                 tasktime = tasktimedata[0][8:]
-
                 taskdate = validation_data(taskdate, taskdescription, data, debuglog)
 
             else:
-                taskdate = 'Error'
-                tasktime = 'Error'
+                taskdate = tasktime = 'Error'
                 warnings.append(taskdescription + ' - ' + 'Error in tasktimedata.')
 
             taskslist.append([username, data, taskdate, project, taskdescription, tasktime, taskcategory])
@@ -109,7 +118,6 @@ def process_content(username, data, tasks_name, project, warnings):
 
 
 def get_tasks(link, finishdate, beginningdate, i, nome, thename):
-
     usertasks = link.completed.get_all(project_id=i, limit=200, offset=0, until=finishdate, since=beginningdate)
     tasklist =[]
 
@@ -147,15 +155,12 @@ def connect(teamconnect, projectname):
         if project['parent_id'] == projectid:
             subprojectid[project['id']] = project['name']
 
-
     # Save Names of Users that belong Project
     usersproject = []
-
     if len(subprojectid) > 0:
         for user in collaborators:
             if user['state'] == 'active' and user['project_id'] in subprojectid:
                 usersproject.append(team[user['user_id']])
-
     else:
         for user in collaborators:
             if user['state'] == 'active' and user['project_id'] == projectid:
@@ -165,7 +170,6 @@ def connect(teamconnect, projectname):
     # Connect Team and Get Tasks
     for name, token in teamconnect.items():
         if name in usersproject:
-
             connect = todoist.TodoistAPI(token)
             answer = connect.sync()
 
@@ -173,7 +177,6 @@ def connect(teamconnect, projectname):
             if('error_code' in answer) :
                 print("{0}: {1} login unsuccessul".format(answer['error'], name))
                 continue
-
 
             # Get Id's for distint User (project_id is different for each user)
             projects = connect['projects']
@@ -187,17 +190,14 @@ def connect(teamconnect, projectname):
                     if results['name'] == identification:
                         subprojectids[results['id']] = results['name']
 
-
             # Get Tasks of Subprojects or Project if the subprojectid is empty
             tasks = []
             if len(subprojectid) >= 1:
                 for ids, identification in subprojectids.items():
                     name_project = identification
                     tasks.append(get_tasks(connect, enddate, startdate, ids, name, name_project))
-
             else:
-                name_project = projectname
-                tasks.append(get_tasks(connect, enddate, startdate,  projectid, name, name_project))
+                tasks.append(get_tasks(connect, enddate, startdate,  projectid, name, projectname))
 
     return tasks
 
@@ -214,7 +214,6 @@ def export_csv(tasksinformation, company, errors):
 
     # Generate CSV File
     csvfile = '/Users/Lúcia/Desktop/report_' + company.replace(' ', '_') + '.csv'
-
     with open(csvfile, "w") as output:
         writer = csv.writer(output, lineterminator='\n')
         writer.writerows(tasksreportlist)
@@ -224,13 +223,13 @@ def export_csv(tasksinformation, company, errors):
 
     # Generate debug.log file
     logfile = '/Users/Lúcia/Desktop/debug.log'
+    day = datetime.datetime.now()
 
     if len(errors) > 0:
         with open(logfile, 'w') as debugs:
-            writer_debugs = csv.writer(debugs, delimiter='|', lineterminator='\n')
+            writer_debugs = csv.writer(debugs, delimiter='-', lineterminator='\n')
             for error in errors:
-                writer_debugs.writerow([datetime.datetime.now(), error])
-
+                writer_debugs.writerow([day.strftime('%Y/%m/%d %H:%M'), error])
         print('File with errors created.')
     else:
         print('Not errors found.')
