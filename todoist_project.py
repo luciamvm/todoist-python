@@ -14,7 +14,7 @@ try:
     enddate = sys.argv[3] + 'T23:59'
 except:
     client = 'todoist-python'
-    startdate = "2021-03-01T00:00"
+    startdate = "2021-02-01T14:00"
     enddate = "2021-03-30T23:59"
 
 
@@ -108,21 +108,23 @@ def process_content(username, data, tasks_name, project, warnings):
     return taskslist
 
 
-def get_tasks(link, finishdate, beginningdate, nome, i, thename):
+def get_tasks(link, finishdate, beginningdate, i, nome, thename):
 
     usertasks = link.completed.get_all(project_id=i, limit=200, offset=0, until=finishdate, since=beginningdate)
+    tasklist =[]
 
     for task in usertasks['items']:
         name_tasks = task['content']
         date = task['completed_date']
+        tasklist.append(process_content(nome, date, name_tasks, thename, debuglog))
 
-        process_content(nome, date, name_tasks, thename, debuglog)
+    return tasklist
 
 
 def connect(teamconnect, projectname):
 
     # Connect for to Extract the Team Members and All Projects
-    api = todoist.TodoistAPI('c85809e301b6d32847d6ea4a345d225a5b343673')
+    api = todoist.TodoistAPI('2557865df9c85bba8feb9bf086a1f25371bdac44')
     response = api.sync()
 
     team = {}
@@ -134,17 +136,15 @@ def connect(teamconnect, projectname):
 
     projectlist = api['projects']
 
-
     # Save Id's
-    projectid = []
+    projectid = ''
     subprojectid = {}
 
     for project in projectlist:
-
         if project['name'] == projectname:
-            projectid.append(project['id'])
+            projectid = project['id']
 
-        if project['parent_id'] in projectid:
+        if project['parent_id'] == projectid:
             subprojectid[project['id']] = project['name']
 
 
@@ -158,13 +158,14 @@ def connect(teamconnect, projectname):
 
     else:
         for user in collaborators:
-            if user['state'] == 'active' and user['project_id'] in projectid:
-                usersproject.append(team[user['user_id']])#nome dos users do projecto principal
+            if user['state'] == 'active' and user['project_id'] == projectid:
+                usersproject.append(team[user['user_id']])
 
 
     # Connect Team and Get Tasks
     for name, token in teamconnect.items():
         if name in usersproject:
+
             connect = todoist.TodoistAPI(token)
             answer = connect.sync()
 
@@ -173,18 +174,32 @@ def connect(teamconnect, projectname):
                 print("{0}: {1} login unsuccessul".format(answer['error'], name))
                 continue
 
-            # Get Tasks of Subprojects
-            if len(subprojectid) > 0:
+
+            # Get Id's for distint User (project_id is different for each user)
+            projects = connect['projects']
+            projectid = ''
+            subprojectids = {}
+            for results in projects:
+                if results['name'] == projectname:
+                    projectid = results['id']
+
                 for id, identification in subprojectid.items():
+                    if results['name'] == identification:
+                        subprojectids[results['id']] = results['name']
+
+
+            # Get Tasks of Subprojects or Project if the subprojectid is empty
+            tasks = []
+            if len(subprojectid) >= 1:
+                for ids, identification in subprojectids.items():
                     name_project = identification
-                    get_tasks(connect, enddate, startdate, name, id, name_project)
+                    tasks.append(get_tasks(connect, enddate, startdate, ids, name, name_project))
 
-            #Get Tasks of Project
             else:
-                for id in projectid:
-                    name_project = projectname
-                    get_tasks(connect, enddate, startdate, name, id, name_project)
+                name_project = projectname
+                tasks.append(get_tasks(connect, enddate, startdate,  projectid, name, name_project))
 
+    return tasks
 
 
 # Export csv file with data of tasks and log file with errors that have occurred in data processing
@@ -198,7 +213,7 @@ def export_csv(tasksinformation, company, errors):
     tasksreportlist.extend(tasksinformation)
 
     # Generate CSV File
-    csvfile = '/Users/Lúcia/Desktop/report_...4' + company.replace(' ', '_') + '.csv'
+    csvfile = '/Users/Lúcia/Desktop/report_' + company.replace(' ', '_') + '.csv'
 
     with open(csvfile, "w") as output:
         writer = csv.writer(output, lineterminator='\n')
