@@ -29,11 +29,7 @@ except:
 
 
 # Define Team
-teamlogin = {'Lúcia Moita': 'c85809e301b6d32847d6ea4a345d225a5b343673',
-             'Nuno Tenazinha': '2557865df9c85bba8feb9bf086a1f25371bdac44',
-             'Karolina Szmit': 'ffba60cd1d7377810f2f07502dd1c98b56c6271e',
-             'Marta Gouveia': '8bac2c52ac124a9dbcf1dbe5baa3c118437b0ad8',
-             'Gonçalo Cevadinha': 'fab0edf44f51a39ffa318fd21f3f76dd250dbee5'}
+teamlogin = {name : token}
 
 
 locale.setlocale(locale.LC_ALL, 'pt_PT')
@@ -156,7 +152,7 @@ def get_tasks(link, finishdate, beginningdate, i, nome, thename):
 def connect(teamconnect, projectname):
 
     # Connect for to Extract the Team Members and All Projects
-    api = todoist.TodoistAPI('2557865df9c85bba8feb9bf086a1f25371bdac44')
+    api = todoist.TodoistAPI(token)
 
     team = {}
     collaboratorlist = api['collaborators']
