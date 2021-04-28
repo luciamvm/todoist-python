@@ -1,0 +1,64 @@
+{"contract_type": "mensal",
+ "report_title": "PROJETOS\nMINOR HOTEL GROUP\nHOTÉIS TIVOLI PORTUGAL",
+ "number_contracts": 1,
+ "contract_start_date": "2021-04-22",
+ "contract_end_date": "2021-05-22",
+ "projects": {
+	"tvmv": {
+		"name": "TVMV - Tivoli Marina Vilamoura",
+		"categories": ["purobeach", "print", "digital", "spa", "events", "f&b", "f&b-identidades", "collaterals", "signage", "tivoli shape", "centro de congressos algarve", "weddings"]
+		},
+	"avic": {
+		"name": "AVIC - Anantara",
+		"categories": ["print", "digital", "collaterals", "events", "f&b", "spa", "sinalética", "weddings"]
+		},
+	"tvla":{	
+		"name": "TVLA - Tivoli Lagos",
+		"categories": ["f&b", "signage", "collaterals", "print", "digital", "events", "weddings"]
+		},
+	"tvca":{	
+		"name": "TVCA - Tivoli Carvoeiro",
+		"categories": ["print", "events", "collaterals", "signage", "f&b", "digital", "spa", "tivoli shape", "weddings"]
+		},
+	"tvpo":{	
+		"name": "TVMP - Tivoli Marina Portimão",
+		"categories": ["print", "events", "f&b", "signage", "digital", "weddings"]
+		},
+	"hotels_resorts":{	
+		"name": "Tivoli Hotels & Resorts Brand - Partilhado",
+		"categories": ["print", "digital", "events", "weddings", "spa"]
+		},
+	"residences":{	
+		"name": "TVR - Residences",
+		"categories": ["print", "f&b", "events", "digital"]
+		},
+	"tlis":{	
+		"name": "Tivoli Avenida",
+		"categories": ["print", "digital", "events", "collaterals", "signage", "f&b", "spa", "tivoli shape", "weddings"]
+		},
+	"oriente":{	
+		"name": "Tivoli Oriente",
+		"categories": ["print", "digital", "events", "collaterals", "signage", "f&b"]
+		},
+	"seteais":{	
+		"name": "Tivoli Palácio de Seteais",
+		"categories": ["print", "digital", "events", "collaterals", "signage", "f&b", "spa", "tivoli shape", "weddings"]
+		},
+	"sintra":{	
+		"name": "Tivoli Sintra",
+		"categories": ["print", "digital", "events", "collaterals", "signage", "f&b"]
+		},
+	"evora":{	
+		"name": "Tivoli Évora",
+		"categories": ["print", "digital", "events", "collaterals", "signage", "f&b"]
+		},
+	"coimbra":{	
+		"name": "Tivoli Coimbra",
+		"categories": ["print", "digital", "events", "collaterals", "signage", "f&b"]
+		},
+	"avani":{	
+		"name": "Avani",
+		"categories": ["print", "digital", "events", "collaterals", "signage", "f&b"]
+		}	
+	}
+}
