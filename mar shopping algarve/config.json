@@ -1,0 +1,20 @@
+{"contract_type": "anual",
+ "report_title": "MAR Shopping Algarve",
+ "number_contracts": 2,
+ "contract_start_date": "01/01/2021",
+ "contract_end_date": "31/12/2021",
+ "projects": {
+	"brand design": {
+		"total": 540,
+		"cover_table_title": "BRAND DESIGN",
+		"tasks_table_title": "Brand Design",
+		"categories": ["print", "digitaldesign", "signage", "multimedia"]
+		},
+	"digital": {
+		"total": 600,
+		"cover_table_title": "DIGITAL",
+		"tasks_table_title": "Digital: Gestão de Conteúdos Website e Social Media",
+		"categories": ["socialmedia", "communitymanagement", "website", "ads"]
+		}
+	}
+}

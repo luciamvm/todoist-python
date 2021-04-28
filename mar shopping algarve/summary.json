@@ -1,0 +1,22 @@
+{
+  "projects": {
+    "brand design": {
+      "avaliable": 342.78,
+      "hours_month": {
+        "Janeiro 2021": 11.2,
+        "Fevereiro 2021": 12.5,
+        "Mar\u00e7o 2021": 5.67,
+        "Abril 2021": 0.0
+      }
+    },
+    "digital": {
+      "avaliable": 366.96,
+      "hours_month": {
+        "Janeiro 2021": 33.4,
+        "Fevereiro 2021": 22.5,
+        "Mar\u00e7o 2021": 11.4,
+        "Abril 2021": 9.08
+      }
+    }
+  }
+}
