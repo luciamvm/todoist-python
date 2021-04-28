@@ -1,5 +1,6 @@
+# Import libraries
 import todoist_project
-import csv, copy
+import csv, json
 from collections import defaultdict
 from operator import itemgetter
 
@@ -24,10 +25,12 @@ atualYear = todoist_project.atualYear
 taskslist = []
 elementsPDF = []
 
+doc = BaseDocTemplate(f'KOBU_{client}_csv.pdf', pagesize=A4)
+
 
 # Read CSV and Save info tasks in taskslist
-def ler_csv(company, tasksinformation):
-    csv_file = '/Users/Lúcia/Desktop/report_' + company.replace(' ', '_') + '.csv'
+def read_csv(company, tasksinformation):
+    csv_file = '/Users/Lúcia/Desktop/report_' + company.replace(' ', '_')+'_csv' + '.csv'
     with open(csv_file) as output:
         csv_reader = csv.reader(output)
         csv_reader.__next__()
@@ -38,333 +41,115 @@ def ler_csv(company, tasksinformation):
     return tasksinformation
 
 
-def organize_tasks(taskinformation): #anual
-    #Dicionario com tasks agrupadas por categoria e dict com os tempos por categoria
+
+def organize_tasks(taskinformation):
+
+    # Dicionario com tasks agrupadas por categoria
     by_category = defaultdict(list)
-    time = defaultdict(list)
     for info in taskinformation:
         by_category[info[4]].append([info[0], info[1], info[2], info[3], info[4]])
-        time[info[4]].append(float(info[3]))
 
 
-    # Tempo total gasto por categoria em horas
-    time_min = {}
-    for category, times in time.items():
-        time[category] = round(sum(times)/60, 2)
-        time_min[category] = round(sum(times), 2)
-
-
-    #Depois de agrupadas as tasks, ordenei por data
-    by_date = defaultdict(list)
+    # Tasks ordenadas pro data
+    ordered_tasks = []
     for category, task in by_category.items():
         ordered = sorted(task, key=itemgetter(0))
-        by_date[category].append(ordered)
+        ordered_tasks.append(ordered)
 
-    return time, time_min, by_date
-
-
-####################Anual Version#############################
-def prepare_PDF_anual(company, taskinformation):
-    read_summary = todoist_project.read_summary_anual(company)
-    hours_disponiveis = read_summary[0]#hrs que ficaram no mês passado
-
-    transform = []
-    for time in hours_disponiveis:
-        transform.append(float(time.replace(',','.')))
-
-    # Categorias do projecto
-    times = organize_tasks(taskinformation)[0]
-    justtimes = list(times.values())#horas despendidas este mês -  indice[0] = digital, indice[1] = brand design
-
-    avaliable = [] #horas disponiveis a partir de hoje - indice[0] = digital, indice[1] = brand design
-    for minutes, horas in zip(transform,justtimes):
-        avaliable.append(minutes-horas)
-
-    #Atualização de summary.txt com os tempos em avaliable
-    get_names = read_summary[6][:2]
-    names = []
-    for name in get_names:
-        spar = name.split('-')
-        names.append(spar[0])
-
-    safe = read_summary[6][2:]
-
-    file = '/Users/Lúcia/Desktop/' + company + '/summary.txt'
-    with open(file, 'w') as file:
-        file.write(f'{names[0]}- {avaliable[0]}\n')
-        file.write(f'{names[1]}- {avaliable[1]}\n')
-        for i in safe:
-            file.write(i)
-        file.write(f'{reportDate.capitalize()} - {justtimes[0]} - {justtimes[1]} \n')
-
-
-    return hours_disponiveis, justtimes, avaliable
-
-
-def cover_versao_anual(content, company, taskinformation):
-
-    # Função para ler os config.txt
-    configuracoes = todoist_project.read_config(company)
-
-    titleStyle = ParagraphStyle('heading2',
-                                fontName='Helvetica',
-                                fontSize=12,
-                                textColor=colors.blue,
-                                leading=15)
-
-    content.append(Paragraph(f'RELATÓRIO {todoist_project.reportDate}', titleStyle))
-
-    subtitleStyle = ParagraphStyle('heading1',
-                                   fontName='Helvetica-Bold',
-                                   fontSize=20,
-                                   textColor=colors.black,
-                                   leading=15)
-
-    content.append(Paragraph(f'PROJECTOS {configuracoes[1]}', subtitleStyle))
-
-    infoStyle = ParagraphStyle('paragraph',
-                               fontName='Helvetica',
-                               fontSize=12,
-                               spaceBefore=10,
-                               spaceAfter=30)
-
-    content.append(Paragraph(f'ao abrigo do(s) pacote(s) de hora(s) adquirido(s) a partir de {configuracoes[2]}', infoStyle))
-
-    times = prepare_PDF_anual(company, taskinformation)
-    hours_disponiveis = times[0]
-    justtimes = times[1]
-    avaliable = times[2]
-
-    #categorias do projectos encontradas no config
-    categorys = configuracoes[4] + configuracoes[5]
-
-    day = int(enddate[:2]) + 1
-    dataTable = [['Perído a que diz respeito', f'{startdate} a {enddate}             '],
-                 [categorys[0]],
-                 [f'Total de horas no pacote adquirido ({configuracoes[3]})', categorys[1][1:-1] + ' horas'],
-                 [f'Total de horas a {startdate}', str(hours_disponiveis[0].replace('.', ','))],
-                 [f'Horas despendidas no período de {startdate} a {enddate}', str(justtimes[0]).replace('.',',')],
-                 [f'Total de horas disponíveis a {day}/{enddate[3:]}', str(avaliable[0]).replace('.', ',')],
-                 [categorys[2]],
-                 [f'Total de horas no pacote adquirido ({configuracoes[3]})', categorys[3][1:-1] + ' horas'],
-                 [f'Total de horas a {startdate}', str(hours_disponiveis[1].replace('.', ','))],
-                 [f'Horas despendidas no período de {startdate} a {enddate}', str(justtimes[1]).replace('.',',')],
-                 [f'Total de horas disponíveis a {day}/{enddate[3:]}', str(avaliable[1]).replace('.', ',')]]
-
-
-    table = Table(dataTable)
-    style = TableStyle([('BOX', (0, 0), (-1, -1), 0.15, colors.black), #linhas de fora
-                        ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.black), #linhas dentro
-                        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),#tipo de letra
-                        ('FONTSIZE', (0, 0), (-1, -1), 10),#tamanho de letra
-                        ('FONTNAME', (0, 1), (0, 1), 'Helvetica-Bold'),
-                        ('FONTNAME', (0, 6), (0, 6), 'Helvetica-Bold'),
-                        ('FONTNAME', (1, 3), (1, 5), 'Helvetica-Bold'),
-                        ('FONTNAME', (1, 8), (1, -1), 'Helvetica-Bold')])
-
-    # Alternate color BACKGROUND table
-    todoist_project.alternate_color(dataTable, table)
-
-    table.setStyle(style)
-    content.append(table)
-
-    # Comments
-    todoist_project.comments_cover(content)
-
-    return content
+    return ordered_tasks
 
 
 
-def bodyAnual(content, company, taskinformation):
-    titleStyle = ParagraphStyle('heading',
-                                fontName='Helvetica-Bold',
-                                fontSize=14,
-                                textColor=colors.black,
-                                leading=70,
-                                alignment=TA_CENTER)
+######################Version 2 == 1 contrato ##############################
+def calcules_version2(company, report_date):
+    ordered = organize_tasks(taskslist)
 
-    content.append(Paragraph('3. Relação de Projetos/Horas', titleStyle))
+    # Dict with minutes for project
+    min_subproject = defaultdict(list)
+    for task in ordered:
+        for i in task:
+            min_subproject[i[1]].append(int(i[3]))
 
-    titles = todoist_project.read_config(company)
+    summary = todoist_project.read_summary(client)
 
-
-    #Este estilo foi criado para o texto não passar a largura da tabela e fazer \n
-    styles = getSampleStyleSheet()
-    styleN = styles["BodyText"]
-
-    titleTable = titles[6][:-1]
-    title1Table = titles[7][0][:-1]
-
-    data = [[titleTable],
-            ['ID', 'Nome'],
-            ['1', title1Table]]
-
-    title2Table = titles[7][2][:-1]
-    data1 = [[titleTable],
-            ['ID', 'Nome'],
-            ['2' , title2Table]]
-
-    categorys = titles[4] + titles[5]
-    category1 = categorys[0][:-1]#digital
-    category2 = categorys[2][:-1]#brand design
-
-    # Adicionar as tasks á tabela data
-    tableContent = organize_tasks(taskinformation)
-
-    tasks = tableContent[2]
-    time_hours = tableContent[0]
-    time_min = tableContent[1]
-
-    #Adiciona à tabela, data, task, tempo em min por task
-    for category, task in tasks.items():
-        for lista in task:
-            for task in lista:
-                descripition = Paragraph(task[2], styleN)
-                if category == category1.lower():
-                    data.append([task[0], descripition, task[3], '(min)'])
-
-                elif category == category2.lower():
-                    data1.append([task[0], descripition, task[3], '(min)'])
-
-
-    #Adiciona à tabela tempo total em min na primeira categoria
-    for category, time in time_min.items():
-        if category == category1.lower():
-            data.append(['', '', str(time).replace('.', ','), '(min)'])
-        elif category == category2.lower():
-            data1.append(['', '', str(time).replace('.', ','), '(min)'])
-
-    #Adiciona o tempo em horas gasto com a primeira categoria
-    for category, time in time_hours.items():
-        if category == category1.lower():
-            data.append(['', '', str(time).replace('.', ','), '(h)'])
-            data.append([])
-            data.append(['', 'TOTAL MÊS', str(time).replace('.', ','), '(h)'])
-        elif category == category2.lower():
-            data1.append(['', '', str(time).replace('.', ','), '(h)'])
-            data1.append([])
-            data1.append(['', 'TOTAL MÊS', str(time).replace('.', ','), '(h)'])
-
-
-    table = Table(data, repeatRows=3, colWidths=[70, 345, 50, 45])#largura de cada célula
-    table1 = Table(data1, repeatRows=3, colWidths=[70, 345, 50, 45])
-
-    tableStyle = TableStyle([('BOX', (0, 0), (-1, -1), 0.15, colors.black), #linhas de fora
-                             ('INNERGRID', (0, 2), (-1, -1), 0.15, colors.black), #linhas dentro
-                             ('SCAN', (0,0), (0,0)),
-                             ('FONTNAME', (1,-1), (1, -1), 'Helvetica-Bold'), #TOTAL MÊS <--
-                             ('FONTNAME', (0, 0), (1, 2), 'Helvetica-Bold'),
-                             ('FONTNAME', (0, 3), (-1, -1), 'Helvetica'),
-                             ('FONTSIZE', (0, 0), (-1, -1), 10), #tamanho de letra
-                             ('TEXTCOLOR', (1,-1), (1, -1), colors.white),
-                             ('ALIGN',(0, 3), (0, -1), 'RIGHT'), #alinhamento a esquerda
-                             ('ALIGN',(2, 0), (-1, -1), 'LEFT'),
-                             ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
-                             ('ALIGN', (1,-1), (1, -1), 'RIGHT'),
-                             ('VALIGN', (0, 1), (0, -1), 'TOP'),
-                             ('VALIGN', (2, 1), (3, -1), 'TOP'),
-                             ('BACKGROUND', (0, 0), (3, 0), colors.dodgerblue),
-                             ('BACKGROUND', (0, 1), (-1, 1), colors.deepskyblue),
-                             ('BACKGROUND', (1,-1), (1, -1), colors.gray),
-                             ('BACKGROUND', (2,-4),(2,-3), colors.deepskyblue),
-                             ('BACKGROUND', (-2,-1),(-2,-1), colors.deepskyblue)])
-
-    table.setStyle(tableStyle)
-    table1.setStyle(tableStyle)
-
-    content.append(table)
-    content.append(PageBreak())
-    content.append(table1)
-
-    return content
-
-
-######################Mensal Version##############################
-def prepare_PDF_mensal(taskinformation, firstdate, company):
-    ordered = organize_tasks(taskinformation)[2]
-
-    time_min_subproject = defaultdict(list)#horas por subprojecto
-    time_min_categoria = defaultdict(list)#min por categoria existente no csv
-    for category, task in ordered.items():
-        for task in task:
-            for i in task:
-                time_min_categoria[category].append(int(i[3]))
-                time_min_subproject[i[1]].append(int(i[3]))
-
-    total = 0 #total de horas gastas no projeto
-    time_hours_suproject = {}#horas por subprojecto
-    for subproject, min in time_min_subproject.items():
-        time_min_subproject[subproject] = sum(min)
-        time_hours_suproject[subproject] = round(sum(min) / 60, 2)
-        for min in min:
+    # Calculate the sum of times in minutes per project and convert to hours, saving to a new dictionary
+    total = 0
+    hour_subproject = {}
+    for project, minutes in min_subproject.items():
+        min_subproject[project] = sum(minutes)
+        hour_subproject[project] = round(sum(minutes) / 60, 2)
+        for min in minutes:
             total += min
 
-    total_hours = str(round(total/60, 2)).replace('.', ',')
+    # Is the total time in hours spended
+    projecthoursmonth = round(total/60, 2)
+    for projects, info in summary['projects'].items():
+        info[report_date.capitalize()] = projecthoursmonth
+
+    summary = {'projects': {projects: info}}
 
     # Update Summary Hours
-    summary = '/Users/Lúcia/Desktop/' + company + '/summary.txt'
-    with open(summary, 'a') as file:
-        file.write(firstdate.capitalize() + ' - ' + total_hours + '-' + '\n')
+    with open(f'/Users/Lúcia/Desktop/{company}/summary.json', encoding='UTF-8', mode='w') as summaryfile:
+        json.dump(summary, summaryfile, indent=2)
+        summaryfile.close()
 
-    return total_hours, time_hours_suproject
+    return projecthoursmonth, hour_subproject, min_subproject
 
 
-def cover_versao_mensal(content, company, firstdate):
-    times = prepare_PDF_mensal(taskslist, reportDate, company)
+
+def cover_version2(content, firstdate, startdateT, enddateT):
 
     firstlinestyle = ParagraphStyle('heading2',
-                                    fontName='Helvetica',
+                                    fontName='KOBU-Extralight',
                                     fontSize=12,
                                     textColor=colors.blue)
 
     content.append(Paragraph(f'RELATÓRIO {firstdate}', firstlinestyle))
 
-    config = todoist_project.read_config(company)[0]
-
-
     titlestyle = ParagraphStyle('heading1',
-                                fontName='Helvetica-Bold',
+                                fontName='KOBU-Headline',
                                 fontSize=20,
                                 textColor=colors.black,
-                                leading=20)
+                                leading=34)
 
     content.append(Paragraph('PROJECTOS', titlestyle))
-    content.append(Paragraph(config[1], titlestyle))#segunda linha do relatório
 
-    titlestyle2 = ParagraphStyle('heading1',
-                                 fontName='Helvetica-Bold',
-                                 fontSize=20,
-                                 textColor=colors.black,
-                                 leading=70)
+    config = todoist_project.read_config(client)
+    title = config['report_title'].upper()
 
-    content.append(Paragraph(config[2], titlestyle2))
+    content.append(Paragraph(title.replace('\n','<br/>'), titlestyle))#segunda linha do relatório
+    content.append(Paragraph(' ', ParagraphStyle('space', spaceBefore=70)))
+
+    # Total times in min and hour
+    variables = calcules_version2(client, reportDate)
+    hour = variables[0]
+    sub_hour = variables[1]
 
     # First table (capa)  https://www.youtube.com/watch?v=B3OCXBL4Hxs&t=309s
-    data = [['Período a que diz respeito', f'{startdate} a {enddate}              '],
+    data = [['Período a que diz respeito', f'{startdateT} a {enddateT}              '],
             [' ', ' '],
-            [f'Horas despendidas no período de {startdate} a {enddate}', times[0]],
+            [f'Horas despendidas no período de {startdateT} a {enddateT}', hour],
             ['Por rubrica:', ' ']]
 
-    sub_hour = times[1]
-    for pro in config[3:]:
-        times_capa = '0,00'
-        enumerate = pro.split('-')
-        for z, m in sub_hour.items():
-            if z in enumerate[0]:
-                enumerate.append(str(m))
-                times_capa = enumerate[2].replace('.', ',')
+
+    for projects, info in config['projects'].items():
+        times = '0,00'
+        for project, hours in sub_hour.items():
+            if project in projects:
+                times = str(hours).replace('.', ',')
         else:
-            data.append([enumerate[1] + (' (horas)'), times_capa])
+            data.append([info['name'] + ' (horas)', times])
 
 
-    table = Table(data)
-    style = TableStyle([('BOX', (0,0), (-1,-1), 0.15, colors.black), #linhas de fora
-                        ('INNERGRID', (0,0), (-1,-1), 0.25, colors.black), #linhas dentro
-                        ('ALIGN',(0,3),(0,-1),'RIGHT'), #alinhamento a esquerda na primeira coluna na 3 celula até à ultima
-                        ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),#tipo de letra
-                        ('FONTSIZE', (0,0), (-1,-1), 10),#tamanho de letra
-                        ('BACKGROUND', (0,1), (2,1), colors.cornflowerblue),#cor de fundo
-                        ('FONTNAME', (1,2), (1,2), 'Helvetica-Bold')])
+    table = Table(data, colWidths=[280, 150])
+
+    style = TableStyle([('BOX', (0,0), (-1,-1), 0.15, colors.black),
+                        ('INNERGRID', (0,0), (-1,-1), 0.25, colors.black),
+                        ('ALIGN',(0,3),(0,-1),'RIGHT'),
+                        ('FONTNAME', (0,0), (-1,-1), 'KOBU-Regular'),
+                        ('FONTSIZE', (0,0), (-1,-1), 10),
+                        ('BACKGROUND', (0,1), (2,1), colors.cornflowerblue),
+                        ('FONTNAME', (1,2), (1,2), 'KOBU-Bold')])
 
     # Alternate color BACKGROUND table
     todoist_project.alternate_color(data, table)
@@ -378,102 +163,401 @@ def cover_versao_mensal(content, company, firstdate):
     return content
 
 
-def bodyMensal(content, company, taskinformation):
+
+def body_version2(content, pdf):
     titleStyle = ParagraphStyle('heading',
-                                fontName='Helvetica-Bold',
+                                fontName='KOBU-Headline',
                                 fontSize=14,
                                 textColor=colors.black,
-                                leading=70,
+                                leading=50,
                                 alignment=TA_CENTER)
 
     content.append(Paragraph('Relação de Projetos/Horas', titleStyle))
 
     styles = getSampleStyleSheet()
     styleN = styles["BodyText"]
+    styleN.fontName = "KOBU-Regular"
+
+    tasks = organize_tasks(taskslist)
+    config = todoist_project.read_config(client)
+
+    times = calcules_version2(client, reportDate)
+    hours_total = times[0]
+    times_hours = times[1]
+    times_min = times[2]
 
 
-    tasks = organize_tasks(taskinformation)[2]
+    # Creat a table to project
+    extra_style = defaultdict(list)
+    tabelas = {}
+    for project, info in config['projects'].items():
+        id = 0
+        data = {project: [[info['name']],
+                          ['ID', 'Nome']]}
 
-    config = todoist_project.read_config(company)[1]
+        # Add categories to tables
+        for projecto, informacao in data.items():
+            for category in info['categories']:
+                id += 1
+                informacao.append([id, category])
 
-    titles = {} #key = nome do suprojecto no csv, value = nome que terá no relatório
-    categorys = defaultdict(list)
-    for i in config:
-        subproject = i[0].split('-')
-        title = i[1].split('_')
-        titles[subproject[0]] = title[0]
+                #Add tasks info to tables
+                exist_tasks = False
+                for task_array in tasks:
+                    for task in task_array:
+                        description = Paragraph(task[2], styleN)
+                        if task[4] == category and task[1] == projecto:
+                            exist_tasks = True
+                            informacao.append([task[0], description, task[3], '(min)'])
+                if exist_tasks == False:
+                    informacao.append(['-', '-', '', '(min)'])
 
-        category = title[1].split(',')
-        categorys[subproject[0]].append(category)
+            #Add total times to table
+            minutes = False
+            for area, min in times_min.items():
+                if area == project:
+                    minutes = True
+                    informacao.append(['', 'Total', min, '(min)'])
+            if minutes == False:
+                informacao.append(['', 'Total', '0', '(min)'])
+                informacao.append(['', '', '0,00', '(h)'])
 
+            for area, hour in times_hours.items():
+                if area == project:
+                    informacao.append(['', '', hour, '(h)'])
 
+            informacao.append([''])
+            informacao.append([''])
+            tabelas[projecto] = informacao
 
-    style = TableStyle([('BOX', (0, 0), (-1, -1), 0.15, colors.black), #linhas de fora
-                        ('INNERGRID', (0, 2), (-1, -1), 0.15, colors.black), #linhas dentro
-                        ('SCAN', (0,0), (0,0)),
-                        ('FONTNAME', (1,-1), (1, -1), 'Helvetica-Bold'), #TOTAL MÊS <--
-                        ('FONTNAME', (0, 0), (1, 2), 'Helvetica-Bold'),
-                        ('FONTNAME', (0, 3), (-1, -1), 'Helvetica'),
-                        ('FONTSIZE', (0, 0), (-1, -1), 10), #tamanho de letra
-                        ('TEXTCOLOR', (1,-1), (1, -1), colors.white),
-                        ('ALIGN',(0, 3), (0, -1), 'RIGHT'), #alinhamento a esquerda
-                        ('ALIGN',(2, 0), (-1, -1), 'LEFT'),
-                        ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
-                        ('ALIGN', (1,-1), (1, -1), 'RIGHT'),
-                        ('VALIGN', (0, 1), (0, -1), 'TOP'),
-                        ('VALIGN', (2, 1), (3, -1), 'TOP'),
-                        ('BACKGROUND', (0, 0), (3, 0), colors.dodgerblue),
-                        ('BACKGROUND', (0, 1), (-1, 1), colors.deepskyblue),
-                        ('BACKGROUND', (1,-1), (1, -1), colors.gray),
-                        ('BACKGROUND', (2,-4),(2,-3), colors.deepskyblue),
-                        ('BACKGROUND', (-2,-1),(-2,-1), colors.deepskyblue)])
-
-
-    tabelas = []
-
-    for project, title in titles.items():
-        data = [[title],
-                ['ID', 'Nome']]
-
-        for pro, category in categorys.items():
-            for categoria in category:
-                id = 0
-                for i in categoria:
-                    if project == pro:
-                        id +=1
-                        data.append([id ,i])
-
-                        for tema, lista in tasks.items():
-                            for task in lista:
-                                for taskl in task:
-                                    if tema in i and taskl[1] in project:
-                                        data.append([taskl[0], taskl[2], taskl[3], '(min)'])
-
-        data.append([' ', ' ', '-', '(min)'])
-        tabelas.append(data)
+        for category in info['categories']:
+            for row, values in enumerate(informacao):
+                for indice, info in enumerate(values):
+                    if category == info:
+                        extra_style[projecto].append(('FONTNAME', (indice-1, row), (indice, row), 'KOBU-Bold'))
 
 
-    for tabela in tabelas:
-        table = Table(tabela, colWidths=[70, 345, 50, 45])
-        table.setStyle(style)
-        content.append(table)
+    #Estilo comum a todas as tabelas
+    style = ([('BOX', (0, 0), (-1, -3), 0.15, colors.black),
+              ('INNERGRID', (0, 2), (-1, -3), 0.15, colors.black),
+              ('SCAN', (0,0), (0,0)),
+              ('FONTNAME', (1,-1), (1, -1), 'KOBU-Bold'),
+              ('FONTNAME', (0, 0), (1, 2), 'KOBU-Bold'),
+              ('FONTNAME', (0, 3), (-1, -1), 'KOBU-Regular'),
+              ('FONTSIZE', (0, 0), (-1, -1), 10),
+              ('BACKGROUND', (0, 0), (3, 0), colors.dodgerblue),
+              ('BACKGROUND', (0, 1), (-1, 1), colors.deepskyblue),
+              ('BACKGROUND', (1,-4), (1, -4), colors.deepskyblue),
+              ('BACKGROUND', (2,-4),(2,-3), colors.deepskyblue),
+              ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+              ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+              ('ALIGN', (1,-4), (1, -4), 'RIGHT'),
+              ('FONTNAME', (1,-4), (1, -4), 'KOBU-Bold'),
+              ('FONTNAME', (2,-3), (2, -3), 'KOBU-Bold')])
+
+
+    #https://www.javaer101.com/pt/article/25871033.html
+    #caso não seja possivel ficarem duas tabelas completas numa página, a proxima tabela passa para a proxima página
+    available_height = pdf.height
+    for project, tabela in tabelas.items():
+        table = Table(tabela, repeatRows=2, colWidths=[70, 345, 50, 45])
+        # Add style to tables
+        for area, extra in extra_style.items():
+            for estilo in extra:
+                if area == project:
+                    style.append(estilo)
+
+        table.setStyle(TableStyle(style))
+
+        table_height = table.wrap(0, available_height)[1]
+        if available_height < table_height:
+            content.extend([PageBreak(), table])
+            if table_height < pdf.height:
+                available_height = pdf.height - table_height
+            else:
+                available_height = table_height % pdf.height
+        else:
+            content.append(table)
+            available_height = available_height - table_height
+
+
+    total_data = [['','TOTAL MÊS', hours_total, '(h)']]
+    total_table = Table(total_data, colWidths=[70, 345, 50, 45])
+
+    total_style = TableStyle([('BOX', (0, 0), (-1, -1), 0.15, colors.black), #linhas de fora
+                              ('INNERGRID', (0, 0), (-1, -1), 0.15, colors.black),
+                              ('BACKGROUND', (1,0), (1,0), colors.gray),
+                              ('ALIGN', (0,0), (-1,-1), 'RIGHT'),
+                              ('FONTNAME', (0,0), (-2,-1), 'KOBU-Bold'),
+                              ('TEXTCOLOR', (1,0), (1,0), colors.white)])
+
+    total_table.setStyle(total_style)
+    content.append(total_table)
 
     return content
 
 
 
-def export_pdf(caracteristicas):
-    type = todoist_project.read_config(client)[0]
-    if 'anual' in type:
-        cover_versao_anual(caracteristicas, client, taskslist)
-        todoist_project.secondPageAnual(caracteristicas, client, atualYear)
-        bodyAnual(caracteristicas, client, taskslist)
-    else:
-        cover_versao_mensal(caracteristicas, client, reportDate)
-        todoist_project.secondPageMensalVersion(caracteristicas,client, atualYear)
-        bodyMensal(caracteristicas, client, taskslist)
+####################Version 1 = <1contrato#############################
+def calcules_version1(company, reportdate):
 
-    pdf = BaseDocTemplate(f'KOBU_{client}_csv.pdf', pagesize=A4)
+    ordered = organize_tasks(taskslist)
+    config = todoist_project.read_config(client)
+
+    categories = {}
+    #Categorias de cada projecto
+    for project, info in config['projects'].items():
+        categories[project] = info['categories']
+
+    # Todas as categorias encontradas
+    min_category = defaultdict(list)
+    for task in ordered:
+        for i in task:
+            min_category[i[4]].append(i[3])
+
+
+    # Times divididos pelas duas categorias principais
+    times_category = defaultdict(list)
+    for category, min in min_category.items():
+        for project, categoria in categories.items():
+           if category in categoria:
+               times_category[project].append(min)
+
+
+    transform_int = defaultdict(list)
+    # Tempos transformados em números inteiros
+    for category, list_times in times_category.items():
+        for times in list_times:
+            for time in times:
+                transform_int[category].append(int(time))
+
+    total_time_min = {}
+    total_time_hours = {}
+    # Tempo total gasto por categoria
+    for category, time in transform_int.items():
+        total_time_min[category] = sum(time)
+        for project, hours in total_time_min.items():
+            total_time_hours[project] = round(hours / 60, 2)
+
+
+    # Read summary for update
+    summary = todoist_project.read_summary(client)
+
+    # Horas disponiveis até ao report do mês passado
+    avaliable_hours = {}
+    for project, category in summary['projects'].items():
+        avaliable_hours[project] = category['avaliable']
+
+    # Horas disponiveis até ao report de agora
+    avaliable_hours_update = {}
+    for category, time in avaliable_hours.items():
+        for project, hours in total_time_hours.items():
+            if project == category:
+                avaliable_hours_update[project] = round(time-hours, 2)
+
+    for project, info in summary['projects'].items():
+        for category, hour in avaliable_hours_update.items():
+            if category == project:
+                info['avaliable'] = hour
+
+        for cat, time in total_time_hours.items():
+            if project == cat:
+                info['hours_month'][reportdate.capitalize()] = time
+
+    # Update summary
+    with open(f'/Users/Lúcia/Desktop/{company}/summary.json', encoding='UTF-8', mode='w') as summaryfile:
+        json.dump(summary, summaryfile, indent=2)
+        summaryfile.close()
+
+    return avaliable_hours, total_time_hours, total_time_min
+
+
+
+def report_cover_version1(content, reportdate, startdateT, enddateT):
+
+    titleStyle = ParagraphStyle('heading2',
+                                fontName='KOBU-Extralight',
+                                fontSize=14,
+                                textColor=colors.blue,
+                                leading=15)
+
+    content.append(Paragraph(f'RELATÓRIO {reportdate}', titleStyle))
+
+    # Função para ler os config.txt
+    configs = todoist_project.read_config(client)
+
+    subtitleStyle = ParagraphStyle('headline',
+                                   fontName='KOBU-Headline',
+                                   fontSize=30,
+                                   textColor=colors.black,
+                                   leading=23)
+
+    content.append(Paragraph(f'PROJECTOS {configs["report_title"].upper()}', subtitleStyle))
+
+    infoStyle = ParagraphStyle('paragraph',
+                               fontName='KOBU-Regular',
+                               fontSize=12.5,
+                               spaceBefore=10,
+                               spaceAfter=30)
+
+    content.append(Paragraph(f'ao abrigo do(s) pacote(s) de hora(s) adquirido(s) a partir de'
+                             f'{configs["contract_start_date"]}', infoStyle))
+
+
+    times = calcules_version1(client, reportDate)
+    times_last_month = times[0]
+    time_month = times[1]
+
+    day = int(enddate[:2]) + 1
+    contract_start_date = f'(até {configs["contract_end_date"]})'
+
+    #Table for cover
+    tables =[['Período a que diz respeito', f'{startdateT} a {enddateT}']]
+    for category, info in configs['projects'].items():
+        for area, time in times_last_month.items():
+            for tema, hours in time_month.items():
+
+                if category == tema and category == area:
+                    tables.append([category.upper()])
+                    tables.append([f'Total de horas no pacote adquirido {contract_start_date}', f'{info["total"]} horas'])
+                    tables.append([f'Total de horas a {startdate}', time])
+                    tables.append([f'Horas despendidas no período de {startdate} a {enddate}', hours])
+                    tables.append([f'Total de horas disponíveis a {day}/{enddate[3:]}', round(time-hours, 2)])
+
+
+    style = TableStyle([('BOX', (0, 0), (-1, -1), 0.15, colors.black),
+                        ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.black),
+                        ('FONTNAME', (0, 0), (-1, -1), 'KOBU-Regular'),
+                        ('FONTSIZE', (0, 0), (-1, -1), 10),
+                        ('FONTNAME', (0, 1), (0, 1), 'KOBU-Bold'),
+                        ('FONTNAME', (0, 6), (0, 6), 'KOBU-Bold'),
+                        ('FONTNAME', (1, 3), (1, 5), 'KOBU-Bold'),
+                        ('FONTNAME', (1, 8), (1, -1), 'KOBU-Bold'),
+                        ('BACKGROUND', (2, -1), (3, -1), colors.aquamarine)])
+
+
+    table = Table(tables, colWidths=[280, 150])
+    todoist_project.alternate_color(tables, table)
+    table.setStyle(style)
+    content.append(table)
+
+    # Comments
+    todoist_project.comments_cover(content)
+
+    return content
+
+
+def body_version1(content):
+    # Title
+    titleStyle = ParagraphStyle('heading',
+                                fontName='KOBU-Headline',
+                                fontSize=18,
+                                textColor=colors.black,
+                                spaceAfter=40,
+                                alignment=TA_CENTER)
+
+    content.append(Paragraph('Relação de Projetos/Horas', titleStyle))
+
+    # Config info
+    config = todoist_project.read_config(client)
+
+
+    # Style for the text stay in her column (\n)
+    styles = getSampleStyleSheet()
+    styleN = styles["BodyText"]
+    styleN.fontName = "KOBU-Regular"
+
+    # Create tables
+    id = 0
+    data = {}
+    possible_categories = {}
+    for project, info in config['projects'].items():
+        id += 1
+        possible_categories[project] = info['categories']
+
+        data[project] = [[config['report_title']],
+                ['ID', 'Nome'],
+                [id, info["tasks_table_title"]]]
+
+
+    # Tasks
+    tasks = organize_tasks(taskslist)
+
+    # Times
+    times = calcules_version1(client, reportDate)
+    times_hours = times[1]
+    times_min = times[2]
+
+
+    for area, table in data.items():
+        # Add tasks information to tables
+        for project, categories in possible_categories.items():
+            for category in categories:
+                if project == area:
+                    for list_tasks in tasks:
+                        for task in list_tasks:
+                            description = Paragraph(task[2], styleN)
+                            if task[4] == category:
+                                table.append([task[0], description, task[3], '(min)'])
+
+        # Add times for category
+        for tema, time in times_min.items():
+            if area == tema:
+                table.append(['', '', time, '(min)'])
+
+        for tema, time in times_hours.items():
+            if area == tema:
+                table.append(['', '', time, '(h)'])
+                table.append([])
+                table.append(['', 'TOTAL MÊS', time, '(h)'])
+
+
+    # Style to tables
+    tableStyle = TableStyle([('BOX', (0, 0), (-1, -1), 0.15, colors.black),
+                             ('INNERGRID', (0, 2), (-1, -1), 0.15, colors.black),
+                             ('SCAN', (0,0), (0,0)),
+                             ('FONTNAME', (0,0), (0,0), 'KOBU-Headline'),
+                             ('FONTNAME', (0, 1), (1, 2), 'KOBU-Bold'),
+                             ('FONTNAME', (0, 3), (-1, -1), 'KOBU-Regular'),
+                             ('FONTSIZE', (0, 0), (-1, -1), 10),
+                             ('FONTNAME', (1,-1), (1, -1), 'KOBU-Bold'),
+                             ('TEXTCOLOR', (1,-1), (1, -1), colors.white),
+                             ('ALIGN',(0, 3), (0, -1), 'RIGHT'),
+                             ('ALIGN',(2, 0), (-1, -1), 'LEFT'),
+                             ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+                             ('ALIGN', (1,-1), (1, -1), 'RIGHT'),
+                             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+
+
+                             ('BACKGROUND', (0, 0), (3, 0), colors.dodgerblue),
+                             ('BACKGROUND', (0, 1), (-1, 1), colors.deepskyblue),
+                             ('BACKGROUND', (1,-1), (1, -1), colors.gray),
+                             ('BACKGROUND', (2,-4),(2,-3), colors.deepskyblue),
+                             ('BACKGROUND', (-2,-1),(-2,-1), colors.deepskyblue)])
+
+    # Add tables to report
+    for project, table in data.items():
+        tabela = Table(table, repeatRows=3, colWidths=[70, 345, 50, 45])
+        tabela.setStyle(tableStyle)
+        content.append(tabela)
+        content.append(PageBreak())
+
+
+    return content
+
+
+
+def export_pdf(caracteristicas, pdf):
+    type = todoist_project.read_config(client)["number_contracts"]
+    if type == 1:
+        cover_version2(caracteristicas, reportDate, startdate, enddate)
+        todoist_project.summary_version2(caracteristicas, atualYear)
+        body_version2(caracteristicas, pdf)
+    else:
+        report_cover_version1(caracteristicas, reportDate, startdate, enddate)
+        todoist_project.summary_version1(caracteristicas, atualYear)
+        body_version1(caracteristicas)
+
     frame = Frame(pdf.leftMargin, pdf.bottomMargin, pdf.width, pdf.height, id='normal')
     template = PageTemplate(id='footer', frames=frame, onPage=todoist_project.footer)
     pdf.addPageTemplates([template])
@@ -485,5 +569,5 @@ def export_pdf(caracteristicas):
 
 
 if __name__ == '__main__':
-    ler_csv(client, taskslist)
-    export_pdf(elementsPDF)
+    read_csv(client, taskslist)
+    export_pdf(elementsPDF, doc)

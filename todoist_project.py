@@ -1,19 +1,26 @@
 # Import libraries
 import todoist, re, csv
 import datetime, sys
-import locale, copy
+import locale
+import json
 from operator import itemgetter
 from collections import defaultdict
 
+import os
+import reportlab
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, Table, TableStyle, PageBreak
 from reportlab.platypus import BaseDocTemplate, Frame, PageTemplate
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_JUSTIFY, TA_LEFT, TA_CENTER, TA_RIGHT
+from reportlab.lib.styles import getSampleStyleSheet
 
 
-taskslist = defaultdict(list)
+
+taskslist = []
 debuglog = []
 elements = []
 
@@ -25,8 +32,8 @@ try:
     enddate = sys.argv[3] + 'T23:59'
 except:
     client = 'tivoli'
-    startdate = "2021-02-26T00:00"
-    enddate = "2021-03-25T23:59"
+    startdate = "2021-03-22T00:00"
+    enddate = "2021-04-22T23:59"
 
 
 # Define Team
@@ -37,12 +44,33 @@ teamlogin = {'Lúcia Moita': 'c85809e301b6d32847d6ea4a345d225a5b343673',
              'Gonçalo Cevadinha': 'fab0edf44f51a39ffa318fd21f3f76dd250dbee5'}
 
 
+# Dates for use in PDF
 locale.setlocale(locale.LC_ALL, 'pt_PT')
 date = datetime.datetime.now()
 atualYear = date.strftime('%Y')
 reportDate = date.strftime('%B %Y').upper()
 startdateTable = f'{startdate[8:10]}/{startdate[5:7]}/{startdate[:4]}'
 enddateTable = f'{enddate[8:10]}/{enddate[5:7]}/{enddate[:4]}'
+
+
+doc = BaseDocTemplate(f'KOBU_{client}.pdf', pagesize=A4)
+
+
+# Intall KOBU FONTS for reports
+folder = os.path.dirname(reportlab.__file__) + os.sep + 'fonts'
+
+headline = os.path.join(folder, 'KobuHeadlineBdCn.ttf')
+bold = os.path.join(folder, 'KOBUTextSansSerif-Bold.ttf')
+regular = os.path.join(folder, 'KOBUTextSansSerif-Regular.ttf')
+regular_italic = os.path.join(folder, 'KOBUTextSansSerif-RegularItalic.ttf')
+extralight = os.path.join(folder, 'KOBUTextSansSerif-ExtraLight.ttf')
+
+pdfmetrics.registerFont(TTFont("KOBU-Headline", headline))
+pdfmetrics.registerFont(TTFont("KOBU-Bold", bold))
+pdfmetrics.registerFont(TTFont("KOBU-Regular", regular))
+pdfmetrics.registerFont(TTFont("KOBU-RegularItalic", regular_italic))
+pdfmetrics.registerFont(TTFont("KOBU-Extralight", extralight))
+
 
 
 # Validation dates
@@ -86,8 +114,10 @@ def validation_data(itemdata, itemname, closedate, warning, times):
     return itemdata
 
 
+
 # Process the tasks names, Defining what is the Name, the Date, the Time and the Category
 def process_content(username, data, tasks_name, project, warnings):
+
     # Get Task Label
     taskarray = tasks_name.split("@")
     if len(taskarray) > 1:
@@ -137,12 +167,14 @@ def process_content(username, data, tasks_name, project, warnings):
                 taskdate = tasktime = 'Error'
                 warnings.append(taskdescription + ' - Error in tasktimedata.')
 
-            taskslist[taskcategory].append([username, data, taskdate, project, taskdescription, tasktime, taskcategory])
+            taskslist.append([username, data, taskdate, project, taskdescription.capitalize(), tasktime, taskcategory])
 
     return taskslist
 
 
+
 def get_tasks(link, finishdate, beginningdate, i, nome, thename):
+
     usertasks = link.completed.get_all(project_id=i, limit=200, offset=0, until=finishdate, since=beginningdate)
     tasklist = []
 
@@ -152,6 +184,7 @@ def get_tasks(link, finishdate, beginningdate, i, nome, thename):
         tasklist.append(process_content(nome, date, name_tasks, thename, debuglog))
 
     return tasklist
+
 
 
 def connect(teamconnect, projectname):
@@ -221,19 +254,29 @@ def connect(teamconnect, projectname):
     return tasks
 
 
+
 # Sort Tasks in List by Task Date
 def organize(tasksinformation):
+
+    # Tasks agrupadas pro categoria
+    by_category = defaultdict(list)
+    for task in tasksinformation:
+        by_category[task[6]].append([task[0], task[1], task[2], task[3], task[4], task[5], task[6]])
+
+    # Tasks ordenadas por data
     orderedtasks = []
-    for category, task in tasksinformation.items():
-        tasks_ordenadas = sorted(task, key=itemgetter(2))
-        orderedtasks.append(tasks_ordenadas)
+    for category, task in by_category.items():
+        ordered = sorted(task, key=itemgetter(0))
+        orderedtasks.append(ordered)
 
     return orderedtasks
 
 
+
 # Export csv file with data of tasks and log file with errors that have occurred in data processing
-def export_csv(tasksinformation, company, errors, report_date):
-    ordered = organize(tasksinformation)
+def export_csv(company, errors, report_date):
+
+    ordered = organize(taskslist)
 
     # Add Titles to Generate Report List to Export
     tasksreportlist = [['user', 'closing date', 'task date', 'project name', 'task description', 'task time', 'category']]
@@ -260,85 +303,28 @@ def export_csv(tasksinformation, company, errors, report_date):
     else:
         print('Not errors found.')
 
+
     return csvfile, logfile
 
 
+
+# Read Config File
 def read_config(company):
-    config = open('/Users/Lúcia/Desktop/' + company + '/config.txt', encoding='utf-8', mode='r')
-    lines = config.readlines()
-    config.close()
+    with open(f'/Users/Lúcia/Desktop/{company}/config.json', encoding='utf-8', mode='r') as configfile:
+        data = json.load(configfile)
 
-    # Define Contrat Type
-    contrat = lines[0].split('-')
-    contratType = contrat[1]
-
-    # Select Information, titulos e subtitulos do tipo de contrato mensal
-    infoMensal = []
-    categorys = []
-
-    # Select Information, titles, subtitles, categorys
-    infoAnual = []
-    category_time = []
-    if 'mensal' in contratType:
-        infoMensal.append(contratType)
-        infoMensal.append(lines[1][:-1])#title
-        infoMensal.append(lines[2][:-1])#title2
-        for line in lines[4:]:
-            separa = line.split(';')
-            infoMensal.append(separa[0])#subtitles
-            categorys.append(separa)#categorias
-        return infoMensal, categorys
-
-    elif 'anual' in contratType:
-        infoAnual.append(contratType)
-        infoAnual.append(lines[1][:-1])#title
-        order = []
-        for configs in lines:
-            spar = configs.split('-')
-            order.append(spar)
-        infoAnual.append(order[2][1][1:-1])#data de pacote adquirido
-        infoAnual.append(order[2][2][1:-1])#data de expiração de pacote
-        categorys = lines[3:5]#categorias
-
-        for category in categorys:
-            category_time.append(category.split('-'))
-
-        titles = [lines[1], lines[5:]]
-
-        return infoAnual + category_time + titles
+    return data
 
 
-# Versão mensal apenas
-def prepare_pdf_mensal(tasksinformation, company, report_date):
-    ordered = organize(tasksinformation)
 
-    # Dict with minutes for project
-    min_subproject = defaultdict(list)
-    for task in ordered:
-        for i in task:
-            if i[5] != 'Error': #mudar
-                min_subproject[i[3]].append(int(i[5]))
+# Read Summary File
+def read_summary(company):
+    with open(f'/Users/Lúcia/Desktop/{company}/summary.json', encoding='UTF-8', mode='r') as summary:
+        data = json.load(summary)
+        summary.close()
 
-    # Calculate the sum of times in minutes per project and convert to hours, saving to a new dictionary
-    total = 0
-    hour_subproject = {}
-    for project, minutes in min_subproject.items():
-        min_subproject[project] = sum(minutes)
-        hour_subproject[project] = round(sum(minutes) / 60, 2)
-        for min in minutes:
-            total += min
+    return data
 
-    # Is the total time in hours spent per month
-    projecthoursmonth = round(total/60, 2)
-    projecthoursmonth = str(projecthoursmonth).replace('.', ',')
-
-    # Update Summary Hours
-    firstdate = report_date.strftime('%B %Y').capitalize()
-    summary = '/Users/Lúcia/Desktop/' + company + '/summary.txt'
-    with open(summary, 'a') as file:
-        file.write(firstdate + ' - ' + projecthoursmonth + '-' + '\n')
-
-    return projecthoursmonth, hour_subproject
 
 
 def alternate_color(dados, tabela):
@@ -359,15 +345,16 @@ def alternate_color(dados, tabela):
 
 def comments_cover(content):
     titlecomment = ParagraphStyle('paragraph',
-                                  fontName='Helvetica-Bold',
-                                  fontSize=12, spaceBefore=20,
+                                  fontName='KOBU-Bold',
+                                  fontSize=12,
+                                  spaceBefore=40,
                                   spaceAfter=10)
 
     content.append(Paragraph('Este relatório contém:', titlecomment))
 
 
     commentstyle = ParagraphStyle('paragraph',
-                                  fontName='Helvetica',
+                                  fontName='KOBU-Regular',
                                   fontSize=10)
 
     content.append(Paragraph('1.    Resumo de Campanhas Facebook e Instagram Ads', commentstyle))
@@ -378,42 +365,74 @@ def comments_cover(content):
     return content
 
 
+#########################Version 2 == 1 contrato############################
+def calcules_version2(company, report_date):
+
+    tasks_ordered = organize(taskslist)
+
+    # Dict with minutes for project
+    min_subproject = defaultdict(list)
+    for task in tasks_ordered:
+        for i in task:
+            if i[5] != 'Error': #mudar
+                min_subproject[i[3]].append(int(i[5]))
+
+    summary = read_summary(client)
+
+    # Calculate the sum of times in minutes per project and convert to hours, saving to a new dictionary
+    total = 0
+    hour_subproject = {}
+    for project, minutes in min_subproject.items():
+        min_subproject[project] = sum(minutes)
+        hour_subproject[project] = round(sum(minutes) / 60, 2)
+        for min in minutes:
+            total += min
+
+    # Is the total time in hours spent per month
+    projecthoursmonth = round(total/60, 2)
+
+    for projects, info in summary['projects'].items():
+        info[report_date.capitalize()] = projecthoursmonth
+
+    summary = {'projects': {projects: info}}
+
+    # Update Summary Hours
+    with open(f'/Users/Lúcia/Desktop/{company}/summary.json', encoding='UTF-8', mode='w') as summaryfile:
+        json.dump(summary, summaryfile, indent=2)
+        summaryfile.close()
+
+    return projecthoursmonth, hour_subproject, min_subproject
+
 
 
 # PDF Variables, Calcules and Export
-def coverMensalVersion(content, company, firstdate, startdateT, enddateT):
-    variables = prepare_pdf_mensal(taskslist, client, date)
-    hour = variables[0]
-    print(hour)
-    sub_hour = variables[1]
-    print(sub_hour)
+def cover_version2(content, firstdate, startdateT, enddateT):
 
     firstlinestyle = ParagraphStyle('heading2',
-                                    fontName='Helvetica',
-                                    fontSize=12,
-                                    textColor=colors.blue)
+                                    fontName='KOBU-Extralight',
+                                    fontSize=14,
+                                    textColor=colors.blue,
+                                    spaceAfter=5)
 
     content.append(Paragraph(f'RELATÓRIO {firstdate}', firstlinestyle))
 
-    config = read_config(company)
-    print(config)
 
-    titlestyle = ParagraphStyle('heading1',
-                                fontName='Helvetica-Bold',
-                                fontSize=20,
+    titlestyle = ParagraphStyle('cover_title',
+                                fontName='KOBU-Headline',
+                                fontSize=30,
                                 textColor=colors.black,
-                                leading=20)
+                                leading=30)
 
-    content.append(Paragraph('PROJECTOS', titlestyle))
-    content.append(Paragraph(config[1], titlestyle))#segunda linha do relatório
 
-    titlestyle2 = ParagraphStyle('heading1',
-                                 fontName='Helvetica-Bold',
-                                 fontSize=20,
-                                 textColor=colors.black,
-                                 leading=70)
+    config = read_config(client)
+    title = config['report_title'].upper()
 
-    content.append(Paragraph(config[2], titlestyle2))
+    content.append(Paragraph(title.replace('\n', '<br/>'), titlestyle))
+    content.append(Paragraph(' ', ParagraphStyle('space', spaceBefore=50)))
+
+    variables = calcules_version2(client, reportDate)
+    hour = variables[0]
+    sub_hour = variables[1]
 
     # First table (capa)  https://www.youtube.com/watch?v=B3OCXBL4Hxs&t=309s
     data = [['Período a que diz respeito', f'{startdateT} a {enddateT}              '],
@@ -421,26 +440,26 @@ def coverMensalVersion(content, company, firstdate, startdateT, enddateT):
            [f'Horas despendidas no período de {startdateT} a {enddateT}', hour],
            ['Por rubrica:', ' ']]
 
-    # Nomes e tempos dos projetos por rubrica acrescentados à tabela
-    for pro in config[3]:
-        times_capa = '0,00'
-        enumerate = pro.split('-')
-        for z, m in sub_hour.items():
-            if z in enumerate[0]:
-                enumerate.append(str(m))
-                times_capa = enumerate[2].replace('.', ',')
+
+    # ADD Projects and Hours Spended of Data
+    for projects, info in config['projects'].items():
+        times = '0,00'
+        for project, hours in sub_hour.items():
+            if project in projects:
+                times = str(hours).replace('.', ',')
         else:
-            data.append([enumerate[1][:-1] + (' (horas)'), times_capa])
+            data.append([info['name'] + ' (horas)', times])
 
 
-    table = Table(data)
-    style = TableStyle([('BOX', (0,0), (-1,-1), 0.15, colors.black), #linhas de fora
-                        ('INNERGRID', (0,0), (-1,-1), 0.25, colors.black), #linhas dentro
-                        ('ALIGN',(0,3),(0,-1),'RIGHT'), #alinhamento a esquerda na primeira coluna na 3 celula até à ultima
-                        ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),#tipo de letra
-                        ('FONTSIZE', (0,0), (-1,-1), 10),#tamanho de letra
-                        ('BACKGROUND', (0,1), (2,1), colors.cornflowerblue),#cor de fundo
-                        ('FONTNAME', (1,2), (1,2), 'Helvetica-Bold')])
+    table = Table(data, colWidths=[280, 150])
+
+    style = TableStyle([('BOX', (0,0), (-1,-1), 0.15, colors.black),
+                        ('INNERGRID', (0,0), (-1,-1), 0.25, colors.black),
+                        ('ALIGN',(0,3),(0,-1),'RIGHT'),
+                        ('FONTNAME', (0,0), (-1,-1), 'KOBU-Regular'),
+                        ('FONTSIZE', (0,0), (-1,-1), 10),
+                        ('BACKGROUND', (0,1), (2,1), colors.cornflowerblue),
+                        ('FONTNAME', (1,2), (1,2), 'KOBU-Bold')])
 
     # Alternate color BACKGROUND table
     alternate_color(data, table)
@@ -454,35 +473,12 @@ def coverMensalVersion(content, company, firstdate, startdateT, enddateT):
     return content
 
 
-def read_summary_mensal(company):
-    # Read Summary File for Extrat Times
-    config2 = open('/Users/Lúcia/Desktop/' + company + '/summary.txt', encoding='utf-8', mode='r')
-    lines2 = config2.readlines()
-    config2.close()
 
-    # Tempo total somando as horas dos meses e a média
-    n = 0
-    timepormes = {}
-    for line in lines2:
-        x = line.split('-')
-        count = x[1].replace(',', '.')
-        timepormes[x[0]] = float(count)
-        n += 1
+def summary_version2(content, year):
 
-    total = 0
-    for mounth, time in timepormes.items():
-        total += time
-
-    media = round(total/n, 2)
-    print(n)
-
-    return total, media, timepormes
-
-
-def secondPageMensalVersion(content, company, year):
     #Estilo e titulo da página
     titlesecond = ParagraphStyle('heading3',
-                                 fontName='Helvetica-Bold',
+                                 fontName='KOBU-Headline',
                                  fontSize=14,
                                  textColor=colors.black,
                                  leading=70,
@@ -491,13 +487,19 @@ def secondPageMensalVersion(content, company, year):
     content.append(Paragraph('Resumo de Consumo de Horas Mensal', titlesecond))
 
 
-    # Informações extraidas de summary.txt
-    summary = read_summary_mensal(company)
-    total = summary[0]
-    media = summary[1]
+    # Calculos a partir da leitura do summary
+    summary = read_summary(client)
+
+    for projects, summarys in summary.items():
+        n = 0
+        for project, times in summarys.items():
+            n += len(times)
+            total = round(sum(times.values()), 2)
+
+    media = round((total/n), 2)
 
     # Dados da segunda tabela
-    data = [['  Horas Mensais', '                   Reais', '          Contratadas', '            Diferença'],
+    data = [['Horas Mensais', 'Reais', 'Contratadas', 'Diferença'],
              [f'Janeiro {year} '],
              [f'Fevereiro {year} '],
              [f'Março {year} '],
@@ -514,24 +516,25 @@ def secondPageMensalVersion(content, company, year):
              ['Média Mensal', str(media).replace('.', ',')]]
 
     # Add data of table after calcules
-    timepormes = summary[2]
     for row in data:
-        for i in row:
-            for mounth, time in timepormes.items():
-                if mounth == i:
+        for mes in row:
+            for mounth, time in times.items():
+                if mounth in mes:
                     row.append(str(time).replace('.', ','))
                     row.append(str(time).replace('.', ','))
                     row.append('0,00')
 
-    table = Table(data)
+
+    table = Table(data, colWidths=[90, 90, 90, 90])
+
     style = TableStyle([('BOX', (0, 0), (-1, -1), 0.15, colors.black), #linhas de fora
                          ('INNERGRID', (0, 0), (-1, -1), 0.15, colors.black), #linhas dentro
                          ('ALIGN',(0, 0), (-1, -1), 'RIGHT'), #alinhamento a esquerda
-                         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),#tipo de letra
+                         ('FONTNAME', (0, 0), (-1, -1), 'KOBU-Regular'),#tipo de letra
                          ('FONTSIZE', (0, 0), (-1, -1), 10),#tamanho de letra
                          ('BACKGROUND', (0, 0), (0, -1), colors.gray),#cor de fundo
-                         ('FONTNAME', (0, 0), (3, 0), 'Helvetica-Bold'),
-                         ('FONTNAME', (0, 13), (0, -1), 'Helvetica-Bold'),
+                         ('FONTNAME', (0, 0), (3, 0), 'KOBU-Bold'),
+                         ('FONTNAME', (0, 13), (0, -1), 'KOBU-Bold'),
                          ('LINEBEFORE', (1, 0), (1, -1), 1, colors.black)])
 
     table.setStyle(style)
@@ -541,120 +544,279 @@ def secondPageMensalVersion(content, company, year):
     return content
 
 
-def prepare_PDF_anual(taskinformation):# acrescentar calculos que faltam na primeira tabela e atualizar summary no fim!
-    ordered = organize(taskinformation)
 
-    #guarda os minutos das tarefas gastos consoante a categoria mas ainda não está a ser usado para nada
+def body_version2(content, pdf):
+    titleStyle = ParagraphStyle('heading',
+                                fontName='KOBU-Headline',
+                                fontSize=14,
+                                textColor=colors.black,
+                                leading=50,
+                                alignment=TA_CENTER)
+
+    content.append(Paragraph('Relação de Projetos/Horas', titleStyle))
+
+    styles = getSampleStyleSheet()
+    styleN = styles["BodyText"]
+    styleN.fontName = "KOBU-Regular"
+
+    tasks = organize(taskslist)
+    config = read_config(client)
+
+    times = calcules_version2(client, reportDate)
+    hours_total = times[0]
+    times_hours = times[1]
+    times_min = times[2]
+
+    # Creat a table to project
+    extra_style = defaultdict(list)
+    tabelas = {}
+    for project, info in config['projects'].items():
+        id = 0
+        data = {project: [[info['name']],
+                          ['ID', 'Nome']]}
+
+        # Add categories to tables
+        for projecto, informacao in data.items():
+            for category in info['categories']:
+                id += 1
+                informacao.append([id, category])
+
+                #Add tasks info to tables
+                exist_tasks = False
+                for task_array in tasks:
+                    for task in task_array:
+                        description = Paragraph(task[4], styleN)
+                        if task[6] == category and task[3] == projecto:
+                            exist_tasks = True
+                            informacao.append([task[2], description, task[5], '(min)'])
+                if exist_tasks == False:
+                    informacao.append(['-', '-', '', '(min)'])
+
+            #Add total times to table
+            minutes = False
+            for area, min in times_min.items():
+                if area == project:
+                    minutes = True
+                    informacao.append(['', 'Total', min, '(min)'])
+            if minutes == False:
+                informacao.append(['', 'Total', '0', '(min)'])
+                informacao.append(['', '', '0,00', '(h)'])
+
+            for area, hour in times_hours.items():
+                if area == project:
+                    informacao.append(['', '', hour, '(h)'])
+
+            informacao.append([''])
+            tabelas[projecto] = informacao
+
+        for category in info['categories']:
+            for row, values in enumerate(informacao):
+                for indice, info in enumerate(values):
+                    if category == info:
+                        extra_style[projecto].append(('FONTNAME', (indice-1, row), (indice, row), 'KOBU-Bold'))
+
+
+    #Estilo comum a todas as tabelas
+    style = ([('BOX', (0, 0), (-1, -2), 0.15, colors.black),
+              ('INNERGRID', (0, 2), (-1, -2), 0.15, colors.black),
+              ('SCAN', (0,0), (0,0)),
+              ('FONTNAME', (1,-1), (1, -1), 'KOBU-Bold'),
+              ('FONTNAME', (0, 0), (1, 2), 'KOBU-Bold'),
+              ('FONTNAME', (0, 3), (-1, -1), 'KOBU-Regular'),
+              ('FONTSIZE', (0, 0), (-1, -1), 10),
+              ('BACKGROUND', (0, 0), (3, 0), colors.dodgerblue),
+              ('BACKGROUND', (0, 1), (-1, 1), colors.deepskyblue),
+              ('BACKGROUND', (1,-3), (1, -3), colors.deepskyblue),
+              ('BACKGROUND', (2,-3),(2,-2), colors.deepskyblue),
+              ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+              ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+              ('ALIGN', (1,-3), (1, -3), 'RIGHT'),
+              ('FONTNAME', (1,-3), (1, -3), 'KOBU-Bold'),
+              ('FONTNAME', (2,-2), (2, -2), 'KOBU-Bold')])
+
+    #https://www.javaer101.com/pt/article/25871033.html
+    #caso não seja possivel ficarem duas tabelas completas numa página, a proxima tabela passa para a proxima página
+    available_height = pdf.height
+    for project, tabela in tabelas.items():
+        table = Table(tabela, repeatRows=2, colWidths=[70, 345, 50, 45])
+        # Add style to tables
+        for area, extra in extra_style.items():
+            for estilo in extra:
+                if area == project:
+                    style.append(estilo)
+
+        table.setStyle(TableStyle(style))
+
+
+        table_height = table.wrap(0, available_height)[1]
+        if available_height < table_height:
+            content.extend([PageBreak(), table])
+            if table_height < pdf.height:
+                available_height = pdf.height - table_height
+            else:
+                available_height = table_height % pdf.height
+        else:
+            content.append(table)
+            available_height = available_height - table_height
+
+
+    total_data = [['','TOTAL MÊS', hours_total, '(h)']]
+    total_table = Table(total_data, colWidths=[70, 345, 50, 45])
+
+    total_style = TableStyle([('BOX', (0, 0), (-1, -1), 0.15, colors.black), #linhas de fora
+                              ('INNERGRID', (0, 0), (-1, -1), 0.15, colors.black),
+                              ('BACKGROUND', (1,0), (1,0), colors.gray),
+                              ('ALIGN', (0,0), (-1,-1), 'RIGHT'),
+                              ('FONTNAME', (0,0), (-2,-1), 'KOBU-Bold'),
+                              ('TEXTCOLOR', (1,0), (1,0), colors.white)])
+
+    total_table.setStyle(total_style)
+    content.append(total_table)
+
+    return content
+
+
+
+####################Version 1 >= 2 contratos#########################################
+def calcules_version1(company, reportdate):
+
+    ordered = organize(taskslist)
+    config = read_config(client)
+
+    categories = {}
+    #Categorias de cada projecto
+    for project, info in config['projects'].items():
+        categories[project] = info['categories']
+
     min_category = defaultdict(list)
     for task in ordered:
         for i in task:
-            if i[5] != 'Error':#mudar
+            if i[6] != 'no-category' and i[5] != 'Error': #mudar mais tarde
                 min_category[i[6]].append(i[5])
 
 
-def read_summary_anual(company):
-    # Read summary.txt of client
-    config = open('/Users/Lúcia/Desktop/' + company + '/summary.txt', mode='r')
-    lines = config.readlines()
-    config.close()
+    times_category = {}
+    # projecto com os tempos gastos este mês em minutos
+    for category, min in min_category.items():
+        for project, categoria in categories.items():
+            if category in categoria:
+                times_category[project] = min
+            else:
+                times_category[project] = [0]
 
-    timesbefore = []
-    for i in lines[:2]:
-        i = i.split('-')
-        timesbefore.append(i[1][1:-1])
+    transform_int = defaultdict(list)
+    # tempos transformados em números inteiros
+    for category, times in times_category.items():
+        for time in times:
+            transform_int[category].append(int(time))
 
-    # Tempo em média e total somando as horas dos meses de summary.txt
-    n = 0
-    timepormes = {}
-    for line in lines[2:]:
-        x = line.split('-')
-        count = x[1].replace(',', '.')
-        count2 = x[2].replace(',', '.')
-        timepormes[x[0]] = [float(count), float(count2)]
-        n += 1
+    total_time_hours = {}
+    total_time_min = {}
+    #tempo total gasto por categoria
+    for category, time in transform_int.items():
+        total_time_min[category] = sum(time)
+        for project, min in total_time_min.items():
+            total_time_hours[project] = round(min / 60, 2)
+
+    # Read summary for update
+    summary = read_summary(client)
+
+    # Horas disponiveis até ao report do mês passado
+    avaliable_hours = {}
+    for project, category in summary['projects'].items():
+        avaliable_hours[project] = category['avaliable']
+
+    # Horas disponiveis até ao report de agora
+    avaliable_hours_update = {}
+    for category, time in avaliable_hours.items():
+        for project, hours in total_time_hours.items():
+            if project == category:
+                avaliable_hours_update[project] = round(time-hours, 2)
+
+    for project, info in summary['projects'].items():
+        for category, hour in avaliable_hours_update.items():
+            if category == project:
+                info['avaliable'] = hour
+
+        for cat, time in total_time_hours.items():
+            if project == cat:
+                info['hours_month'][reportdate.capitalize()] = time
+
+    # Update summary
+    with open(f'/Users/Lúcia/Desktop/{company}/summary.json', encoding='UTF-8', mode='w') as summaryfile:
+        json.dump(summary, summaryfile, indent=2)
+        summaryfile.close()
+
+    return avaliable_hours, total_time_hours, total_time_min
 
 
-    total = 0
-    total2 = 0
-    for mounth, time in timepormes.items():
-        total += time[0]#total do digital
-        total2 += time[1] #total do brand design
 
-    media = round(total/n, 2)#digital
-    media2 = round(total2/n, 2)#brand design
+def cover_version1(content, reportdate, startdateT, enddateT):
 
-    total = round(total, 2)
-    total2 = round(total2, 2)
-
-    # salvar as linhas com os tempos gastos por mês para nao perder
-    safe = lines
-
-    return timesbefore, total, total2, media, media2, timepormes, safe
-
-
-def coverAnualVersion(firstdate, content, company, startdateT, enddateT):
-    #primeira linha
     firstlinestyle = ParagraphStyle('heading2',
-                                    fontName='Helvetica',
-                                    fontSize=12,
+                                    fontName='KOBU-Extralight',
+                                    fontSize=14,
                                     textColor=colors.blue,
                                     leading=15)
 
-    content.append(Paragraph(f'RELATÓRIO {firstdate}', firstlinestyle))
+    content.append(Paragraph(f'RELATÓRIO {reportdate}', firstlinestyle))
 
     # Informações da leitura do config
-    configs = read_config(company)
+    configs = read_config(client)
 
-    titlestyle = ParagraphStyle('heading1',
-                                fontName='Helvetica-Bold',
-                                fontSize=20,
+    titlestyle = ParagraphStyle('headline',
+                                fontName='KOBU-Headline',
+                                fontSize=30,
                                 textColor=colors.black,
-                                leading=15)
+                                leading=23)
 
-    content.append(Paragraph('PROJECTOS ' + configs[1], titlestyle))
+    content.append(Paragraph(f'PROJECTOS {configs["report_title"].upper()}', titlestyle))
 
-    pacotecomment = ParagraphStyle('paragraph',
-                                   fontName='Helvetica',
-                                   fontSize=12,
-                                   spaceBefore=10,
-                                   spaceAfter=30)
+    pacoteStyle = ParagraphStyle('paragraph',
+                                 fontName='KOBU-Regular',
+                                 fontSize=12.5,
+                                 spaceBefore=10,
+                                 spaceAfter=30)
 
-    content.append(Paragraph(f'ao abrigo do(s) pacote(s) de hora(s) adquirido(s) a partir de {configs[2]}', pacotecomment))
+    content.append(Paragraph(f'ao abrigo do(s) pacote(s) de hora(s) adquirido(s) a partir de '
+                             f'{configs["contract_start_date"]}', pacoteStyle))
 
 
-    times = read_summary_anual(company)[0]
-    categorys = configs[4] + configs[5]
+    times = calcules_version1(client, reportDate)
+    times_last_month = times[0]
+    time_month = times[1]
 
-    #ultimo dia da exportação +1
+
     day = int(enddateT[:2]) + 1
-    #dados da tabela da capa
-    data = [['Período a que diz respeito', f'{startdateT} a {enddateT}              '],
-            [categorys[0]],
-            [f'Total de horas no pacote adquirido ({configs[3]})', categorys[1][1:-1] + ' horas'],
-            [f'Total de horas a {startdateT}', times[0]],
-            [f'Horas despendidas no período de {startdateT} a {enddateT}', 'calculo'], ###falta calculo por categoria e diferença de horas
-            [f'Total de horas disponíveis a {day}/{enddateT[3:]}', 'total h - h despendidas'],
-            [categorys[2]],
-            [f'Total de horas no pacote adquirido ({configs[3]})', categorys[3][1:-1] + ' horas'],
-            [f'Total de horas a {startdateT}', times[1]],
-            [f'Horas despendidas no período de {startdateT} a {enddateT}', 'calculo'],###falta calculo por categoria e diferença de horas
-            [f'Total de horas disponíveis a {day}/{enddateT[3:]}', 'total h - h despendidas']]
+    contract_start_date = f'(até {configs["contract_end_date"]})'
+
+    #Table for cover
+    tables =[['Período a que diz respeito', f'{startdateT} a {enddateT}']]
+    for category, info in configs['projects'].items():
+        for area, time in times_last_month.items():
+            for tema, hours in time_month.items():
+
+                if category == area and category == tema:
+                    tables.append([category.upper()])
+                    tables.append([f'Total de horas no pacote adquirido {contract_start_date}', f'{info["total"]} horas'])
+                    tables.append([f'Total de horas a {startdateT}', time])
+                    tables.append([f'Horas despendidas no período de {startdateT} a {enddateT}', hours])
+                    tables.append([f'Total de horas disponíveis a {day}/{enddateT[3:]}', round(time-hours, 2)])
 
 
-    table = Table(data)
-    style = TableStyle([('BOX', (0, 0), (-1, -1), 0.15, colors.black), #linhas de fora
-                        ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.black), #linhas dentro
-                        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),#tipo de letra
-                        ('FONTSIZE', (0, 0), (-1, -1), 10),#tamanho de letra
-                        ('FONTNAME', (0, 1), (0, 1), 'Helvetica-Bold'),
-                        ('FONTNAME', (0, 6), (0, 6), 'Helvetica-Bold'),
-                        ('FONTNAME', (1, 3), (1, 5), 'Helvetica-Bold'),
-                        ('FONTNAME', (1, 8), (1, -1), 'Helvetica-Bold'),
+    style = TableStyle([('BOX', (0, 0), (-1, -1), 0.15, colors.black),
+                        ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.black),
+                        ('FONTNAME', (0, 0), (-1, -1), 'KOBU-Regular'),
+                        ('FONTSIZE', (0, 0), (-1, -1), 10),
+                        ('FONTNAME', (0, 1), (0, 1), 'KOBU-Bold'),
+                        ('FONTNAME', (0, 6), (0, 6), 'KOBU-Bold'),
+                        ('FONTNAME', (1, 3), (1, 5), 'KOBU-Bold'),
+                        ('FONTNAME', (1, 8), (1, -1), 'KOBU-Bold'),
                         ('BACKGROUND', (2, -1), (3, -1), colors.aquamarine)])
 
-    # Alternate color BACKGROUND table
-    alternate_color(data, table)
 
+    table = Table(tables, colWidths=[290, 150])
+    alternate_color(tables, table)
     table.setStyle(style)
     content.append(table)
 
@@ -664,129 +826,190 @@ def coverAnualVersion(firstdate, content, company, startdateT, enddateT):
     return content
 
 
-def secondPageAnual(content, company, year):
+def summary_version1(content, year):
     titleStyle = ParagraphStyle('heading3',
-                                fontName='Helvetica-Bold',
-                                fontSize=14,
+                                fontName='KOBU-Headline',
+                                fontSize=18,
                                 textColor=colors.black,
-                                leading=70,
+                                spaceAfter=40,
                                 alignment=TA_CENTER)
 
-    content.append(Paragraph('2. Resumo de Consumo de Horas Mensal', titleStyle))
-
-    data2 = [['  Horas Mensais', '                   Reais', '          Contratadas', '            Diferença'],
-            [f'Janeiro {year} '],
-            [f'Fevereiro {year} '],
-            [f'Março {year} '],
-            [f'Abril {year} '],
-            [f'Maio {year} '],
-            [f'Junho {year} '],
-            [f'Julho {year} '],
-            [f'Agosto {year} '],
-            [f'Setembro {year} '],
-            [f'Outubro {year} '],
-            [f'Novembro {year} '],
-            [f'Dezembro {year} ']]
-
-    configs = read_config(company)
-    categorys = configs[4] + configs[5]
-
-    info = read_summary_anual(company)[1:] #tempos
-    timepormes = info[4] #tempos gastos por mes
-
-    width = 369 #largura da primeira linha da tabela
-
-    #https://pt.stackoverflow.com/questions/415967/array-atribu%c3%adda-em-outra-n%c3%a3o-mant%c3%a9m-o-mesmo-valor copy
-    table_category1 = copy.deepcopy(data2)
-    table_category2 = copy.deepcopy(data2)
-
-    if table_category1:
-        # calculos referentes á difisão das horas disponiveis por mes e da diferença que são as hrs ainda disponiveis
-        horas_contratadas = round(float(categorys[1][1:-1])/12, 2)
-        diferencaTotal = round(float(categorys[1]) - info[0], 2)
-        diferencaTotal = str(diferencaTotal).replace('.', ',')
-
-        #adiciona horas reais, contratadas e diferença à 1 tabela
-        for row in table_category1:
-            for i in row:
-                for mounth, times in timepormes.items():
-                    if i == mounth:
-                        row.append(str(times[0]).replace('.',','))
-                        row.append(str(horas_contratadas).replace('.',','))
-                        if times[0] > horas_contratadas:
-                            diferenca = round(times[0] - horas_contratadas, 2)
-                            diferenca = str(diferenca).replace('.',',')
-                            row.append(f'+ {diferenca}')
-                        else:
-                            diferenca = round(horas_contratadas - times[0], 2)
-                            diferenca = str(diferenca).replace('.',',')
-                            row.append(diferenca)
-
-        table_category1.append(['TOTAL', str(info[0]).replace('.', ','),  categorys[1][1:-1], diferencaTotal])
-        table_category1.append(['Média Mensal', str(round(info[2], 2)).replace('.', ',')])
-
-        #titulo da primeira tabela
-        titleTable = Table([[f'RESUMO DE CONSUMO DE HORAS {categorys[0]}']], width)
-        table = Table(table_category1)
+    content.append(Paragraph('Resumo de Consumo de Horas Mensal', titleStyle))
 
 
-    if table_category2:
-        horas_contratadas2 = round(int(categorys[3][1:-1])/12, 2)
-        diferencaTotal2 = round(float(categorys[3][1:-1])-info[1], 2)
-        diferencaTotal2 = str(diferencaTotal2).replace('.', ',')
+    configs = read_config(client)
+    summary = read_summary(client)
 
-        for row in table_category2:
-            for i in row:
-                for mounth, times in timepormes.items():
-                    if i == mounth:
-                        row.append(str(times[1]).replace('.',','))
-                        row.append(str(horas_contratadas2).replace('.',','))
-                        if times[1] > horas_contratadas2:
-                            diferenca = round(times[1] - horas_contratadas2, 2)
-                            diferenca = str(diferenca).replace('.',',')
-                            row.append(f'+ {diferenca}')
-                        else:
-                            diferenca = round(horas_contratadas2 - times[1], 2)
-                            diferenca = str(diferenca).replace('.',',')
-                            row.append(diferenca)
+    total = {}
+    n = 0
+    hours_month = {}
+    for projects, summarys in summary.items():
+        for project, info in summarys.items():
+            n += len(info)
+            x = info['hours_month']
+            hours_month[project] = info['hours_month']
+            total[project] = round(sum(x.values()), 2)
+
+    media = {}
+    for category, time in total.items():
+        media[category] = round((time/n), 2)
+
+    tables = []
+    time_avaliable_month = {}
+    for project, info in configs['projects'].items():
+        contract_time = info['total']
+        time_avaliable_month[project] = int(contract_time/12)
+        for category, time in total.items():
+            for area, media_time in media.items():
+                if project == category:
+                    data = [[f'RESUMO DE CONSUMO DE HORAS {project.upper()}'],
+                            ['Horas Mensais', 'Reais', 'Contratadas', 'Diferença'],
+                            [f'Janeiro {year}'],
+                            [f'Fevereiro {year}'],
+                            [f'Março {year}'],
+                            [f'Abril {year}'],
+                            [f'Maio {year}'],
+                            [f'Junho {year}'],
+                            [f'Julho {year}'],
+                            [f'Agosto {year}'],
+                            [f'Setembro {year}'],
+                            [f'Outubro {year}'],
+                            [f'Novembro {year}'],
+                            [f'Dezembro {year}'],
+                            ['TOTAL', time, contract_time, round(contract_time-time, 2)],
+                            ['Média Mensal', media_time]]
+
+        for row in data:
+            for value in row:
+                for topic, avaliable_month in time_avaliable_month.items():
+                    for tema, times in hours_month.items():
+                        for month, time in times.items():
+
+                            if project == tema and month == value and project == topic:
+                                row.append(time)
+                                row.append(avaliable_month)
+                                row.append(avaliable_month-time)
+
+        data.append([])
+        data.append([])
+        tables.append(data)
 
 
-        table_category2.append(['TOTAL', str(round(info[1], 2)).replace('.', ','),  categorys[3][1:-1], diferencaTotal2])
-        table_category2.append(['Média Mensal', str(round(info[3], 2)).replace('.',',')])
+    style = TableStyle([('BOX', (0, 0), (-1, -3), 0.15, colors.black),
+                        ('INNERGRID', (0, 1), (-1, -3), 0.15, colors.black),
+                        ('SCAN', (0,0), (0,0)),
+                        ('ALIGN',(0, 1), (-1, -1), 'RIGHT'),
+                        ('FONTSIZE', (0, 0), (-1, -1), 10),
+                        ('FONTNAME', (0, 2), (-1, -5), 'KOBU-Regular'),
+                        ('FONTNAME', (0, 0), (0, 0), 'KOBU-Headline'),
+                        ('FONTNAME', (0, 1), (-1, 1), 'KOBU-Bold'),
 
-        titleTable2 = Table([[f'RESUMO DE CONSUMO DE HORAS {categorys[2]}']], width)
-        table2 = Table(table_category2)
-
-
-    #Style Tables creat
-    titleStyle = TableStyle([('BACKGROUND', (0, 0), ( 0, 0), colors.blueviolet),
-                             ('BOX', (0, 0), (0, 0), 0.15, colors.black),
-                             ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold')])
-
-    style = TableStyle([('BOX', (0, 0), (-1, -1), 0.15, colors.black), #linhas de fora
-                        ('INNERGRID', (0, 0), (-1, -1), 0.15, colors.black), #linhas dentro
-                        ('ALIGN',(0, 0), (-1, -1), 'RIGHT'), #alinhamento a esquerda
-                        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),#tipo de letra
-                        ('FONTSIZE', (0, 0), (-1, -1), 10),#tamanho de letra
-                        ('FONTNAME', (0, 0), (3, 0), 'Helvetica-Bold'),
-                        ('FONTNAME', (0, 13), (0, -1), 'Helvetica-Bold'),
+                        ('FONTNAME', (0, -4), (0, -1), 'KOBU-Bold'),
+                        ('BACKGROUND', (0,0), (-1,0), colors.coral)
                         ])
 
-    titleTable.setStyle(titleStyle)
-    content.append(titleTable)
-    table.setStyle(style)
-    content.append(table)
+    for table in tables:
+        table = Table(table, colWidths=[90, 90, 90, 90])
+        table.setStyle(style)
+        content.append(table)
 
-    espacoStyle = ParagraphStyle('space',
-                                 spaceBefore=15)
-    content.append(Paragraph(' ', espacoStyle))
+    return content
 
-    titleTable2.setStyle(titleStyle)
-    content.append(titleTable2)
-    table2.setStyle(style)
-    content.append(table2)
 
-    content.append(PageBreak())
+def body_version1(content):
+    # Title
+    titleStyle = ParagraphStyle('heading',
+                                fontName='KOBU-Headline',
+                                fontSize=18,
+                                textColor=colors.black,
+                                spaceAfter=40,
+                                alignment=TA_CENTER)
+
+    content.append(Paragraph('Relação de Projetos/Horas', titleStyle))
+
+    # Config info
+    config = read_config(client)
+
+
+    # Style for the text stay in her column (\n)
+    styles = getSampleStyleSheet()
+    styleN = styles["BodyText"]
+    styleN.fontName = "KOBU-Regular"
+
+    # Create tables
+    id = 0
+    data = {}
+    possible_categories = {}
+    for project, info in config['projects'].items():
+        id += 1
+        possible_categories[project] = info['categories']
+
+        data[project] = [[config['report_title']],
+                         ['ID', 'Nome'],
+                         [id, info["tasks_table_title"]]]
+
+    # Tasks
+    tasks = organize(taskslist)
+
+    # Times
+    times = calcules_version1(client, reportDate)
+    times_hours = times[1]
+    times_min = times[2]
+
+
+    for area, table in data.items():
+        # Add tasks information to tables
+        for project, categories in possible_categories.items():
+            for category in categories:
+                if project == area:
+
+                    for list_tasks in tasks:
+                        for task in list_tasks:
+                            description = Paragraph(task[4], styleN)
+                            if task[6] == category:
+                                table.append([task[2], description, task[5], '(min)'])
+
+        # Add times for category
+        for tema, time in times_min.items():
+            if area == tema:
+                table.append(['', '', time, '(min)'])
+
+        for tema, time in times_hours.items():
+            if area == tema:
+                table.append(['', '', time, '(h)'])
+                table.append([])
+                table.append(['', 'TOTAL MÊS', time, '(h)'])
+
+
+    # Style to tables
+    tableStyle = TableStyle([('BOX', (0, 0), (-1, -1), 0.15, colors.black),
+                             ('INNERGRID', (0, 2), (-1, -1), 0.15, colors.black),
+                             ('SCAN', (0,0), (0,0)),
+                             ('FONTSIZE', (0, 0), (-1, -1), 10),
+                             ('FONTNAME', (0,0), (0,0), 'KOBU-Headline'),
+                             ('FONTNAME', (0, 1), (1, 2), 'KOBU-Bold'),
+                             ('FONTNAME', (0, 3), (-1, -1), 'KOBU-Regular'),
+                             ('TEXTCOLOR', (1,-1), (1, -1), colors.white),
+                             ('FONTNAME', (1,-1), (1, -1), 'KOBU-Bold'),
+                             ('ALIGN',(0, 3), (0, -1), 'RIGHT'),
+                             ('ALIGN',(2, 0), (-1, -1), 'LEFT'),
+                             ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+                             ('ALIGN', (1,-1), (1, -1), 'RIGHT'),
+                             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+
+                             ('BACKGROUND', (0, 0), (3, 0), colors.dodgerblue),
+                             ('BACKGROUND', (0, 1), (-1, 1), colors.deepskyblue),
+                             ('BACKGROUND', (1,-1), (1, -1), colors.gray),
+                             ('BACKGROUND', (2,-4),(2,-3), colors.deepskyblue),
+                             ('BACKGROUND', (-2,-1),(-2,-1), colors.deepskyblue)])
+
+    # Add tables to report
+    for project, table in data.items():
+        tabela = Table(table, repeatRows=3, colWidths=[70, 345, 50, 45])
+        tabela.setStyle(tableStyle)
+        content.append(tabela)
+        content.append(PageBreak())
+
 
     return content
 
@@ -795,14 +1018,14 @@ def secondPageAnual(content, company, year):
 def footer(canvas, pdf):
 
     style = ParagraphStyle('paragraph',
-                           fontName='Helvetica',
+                           fontName='KOBU-Regular',
                            fontSize=8,
                            alignment=TA_CENTER)
 
     empresa = Paragraph('KOBU Agência Criativa Digital, Lda', style)
     morada = Paragraph('Rua do Pé da Cruz, nº 24, 3º Esq e Dir, 8000-404 Faro', style)
     site = '<link href=https://kobu.agency/><u> kobu.agency </u></link>'
-    mail = '<a href=<a href="mailto:hello@kobu.pt"><u> hello@kobu.pt </u></a>'
+    mail = '<a href="mailto:hello@kobu.pt"><u> hello@kobu.pt </u></a>'
     add_footer = Paragraph(site + ' | ' + mail, style)
 
     w, h = empresa.wrap(pdf.width, pdf.bottomMargin)
@@ -814,16 +1037,17 @@ def footer(canvas, pdf):
 
 
 
-def export_pdf(caracteristicas):
-    type = read_config(client)[0]
-    if 'mensal' in type:
-        coverMensalVersion(caracteristicas, client, reportDate, startdateTable, enddateTable)
-        secondPageMensalVersion(caracteristicas, client, atualYear)
+def export_pdf(caracteristicas, pdf):
+    type = read_config(client)['number_contracts']
+    if type == 1:
+        cover_version2(caracteristicas, reportDate, startdateTable, enddateTable)
+        summary_version2(caracteristicas, atualYear)
+        body_version2(caracteristicas, doc)
     else:
-        coverAnualVersion(reportDate, caracteristicas, client, startdateTable, enddateTable)
-        secondPageAnual(caracteristicas, client, atualYear)
+        cover_version1(caracteristicas, reportDate, startdateTable, enddateTable)
+        summary_version1(caracteristicas, atualYear)
+        body_version1(caracteristicas)
 
-    pdf = BaseDocTemplate(f'KOBU_{client}.pdf', pagesize=A4)
     frame = Frame(pdf.leftMargin, pdf.bottomMargin, pdf.width, pdf.height, id='normal')
     template = PageTemplate(id='footer', frames=frame, onPage=footer)
     pdf.addPageTemplates([template])
@@ -836,15 +1060,16 @@ def export_pdf(caracteristicas):
 
 if __name__ == '__main__':
     connect(teamlogin, client)
-    #export_csv(taskslist, client, debuglog, date)
-    export_pdf(elements)
+    export_csv(client, debuglog, date)
+    export_pdf(elements, doc)
 
     # if len(debuglog) >= 1:
-    #     export_csv(taskslist, client, debuglog, date)
+    #     import report_CSV
+    #     export_csv(client, debuglog, date)
     #     exportNow = input('\nQuando o CSV estiver pronto para elaborar um PDF corretamente escreve yes:\n').upper()
     #     if exportNow == 'YES':
-    #         import report_CSV
-    #
+    #         report_CSV.ler_csv(client, taskslist)
+    #         report_CSV.export_pdf(elements, doc)
     # else:
-    #     export_csv(taskslist, client, debuglog, date)
-    #     export_pdf(elements)
+    #     export_csv(client, debuglog, date)
+    #     export_pdf(elements, doc)
